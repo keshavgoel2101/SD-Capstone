@@ -1,18 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Sidebar from '../components/Sidebar';
+import type { User, Doctor } from '../types';
 
 export default function UploadDocument() {
-  const [user, setUser] = useState(null);
-  const [doctors, setDoctors] = useState([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Upload Form State
-  const [file, setFile] = useState(null);
+  const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [documentType, setDocumentType] = useState('Report');
   const [description, setDescription] = useState('');
-  const [selectedDoctors, setSelectedDoctors] = useState([]);
+  const [selectedDoctors, setSelectedDoctors] = useState<string[]>([]);
   const [permission, setPermission] = useState('VIEW');
   const [expiry, setExpiry] = useState('NEVER');
   const [uploading, setUploading] = useState(false);
@@ -24,28 +25,28 @@ export default function UploadDocument() {
     setLoading(true);
     try {
       const profileRes = await fetch('http://localhost:3001/api/user/profile', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       const profileData = await profileRes.json();
       if (!profileRes.ok) throw new Error(profileData.message || 'Failed to load profile');
-      const userData = profileData.user || profileData.data || profileData;
+      const userData: User = profileData.user || profileData.data || profileData;
       setUser(userData);
 
       if (userData.role !== 'doctor') {
         const docRes = await fetch('http://localhost:3001/api/user/doctors', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
         const docData = await docRes.json();
         if (docRes.ok) {
-          setDoctors(Array.isArray(docData) ? docData : (docData.data || []));
+          setDoctors(Array.isArray(docData) ? docData : docData.data || []);
         }
       } else {
-        // Only patients should upload here
         navigate('/documents');
       }
     } catch (err) {
-      setError(err.message);
-      if (err.message.includes('Token')) {
+      const msg = err instanceof Error ? err.message : 'An error occurred';
+      setError(msg);
+      if (msg.includes('Token')) {
         localStorage.removeItem('medivault_token');
         navigate('/login');
       }
@@ -62,9 +63,9 @@ export default function UploadDocument() {
     fetchData();
   }, [token, navigate, fetchData]);
 
-  const handleDoctorSelect = (e) => {
+  const handleDoctorSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const options = e.target.options;
-    const selected = [];
+    const selected: string[] = [];
     for (let i = 0; i < options.length; i++) {
       if (options[i].selected) {
         selected.push(options[i].value);
@@ -73,7 +74,7 @@ export default function UploadDocument() {
     setSelectedDoctors(selected);
   };
 
-  const handleUploadAndShare = async (e) => {
+  const handleUploadAndShare = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!file || !title || !documentType) return alert('Please provide the required fields.');
 
@@ -85,7 +86,7 @@ export default function UploadDocument() {
     formData.append('description', description);
     formData.append('permission', permission);
     formData.append('expiry', expiry);
-    
+
     if (selectedDoctors.length > 0) {
       formData.append('doctorIds', JSON.stringify(selectedDoctors));
     }
@@ -94,61 +95,64 @@ export default function UploadDocument() {
       const res = await fetch('http://localhost:3001/api/documents/upload-and-share', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-        body: formData
+        body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Upload failed');
-      
-      alert('Document uploaded and shared successfully');
       navigate('/documents');
     } catch (err) {
-      alert(err.message);
+      alert(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
   };
 
-  if (loading || !user) return <div className="dashboard-loading">Loading Upload...</div>;
+  const handleLogout = () => {
+    localStorage.removeItem('medivault_token');
+    navigate('/login');
+  };
+
+  if (loading || !user) return <div className="loading-screen">Loading Upload…</div>;
 
   return (
-    <div className="dashboard-layout">
-      <nav className="navbar">
-        <h2>MediVault</h2>
-        <div className="nav-right">
-          <button onClick={() => navigate('/dashboard')} className="btn-outline">Dashboard</button>
-          <span>{user.name} ({user.role})</span>
-          <button onClick={() => {
-            localStorage.removeItem('medivault_token');
-            navigate('/login');
-          }} className="btn-outline">Logout</button>
+    <>
+      <Sidebar user={user} onLogout={handleLogout} />
+      <main className="page-layout">
+        <div className="page-header">
+          <h1 className="page-title">Upload Document</h1>
+          <p className="page-subtitle">Securely upload and share your medical documents.</p>
         </div>
-      </nav>
 
-      <main className="dashboard-content" style={{ display: 'flex', justifyContent: 'center' }}>
-        <div className="upload-container" style={{ width: '100%', maxWidth: '600px' }}>
+        <div style={{ maxWidth: 600 }}>
           {error && <div className="error-banner">{error}</div>}
           <div className="card">
-            <h3>Upload & Securely Share Document</h3>
+            <p className="card-title">Upload &amp; Share Document</p>
             <form onSubmit={handleUploadAndShare} className="upload-form">
               <div className="form-group">
                 <label>Upload File</label>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   id="fileInputDocs"
-                  onChange={(e) => setFile(e.target.files[0])} 
-                  accept=".pdf,.png,.jpg,.jpeg" 
-                  required 
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  required
                 />
               </div>
 
               <div className="form-group">
                 <label>Document Title</label>
-                <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="e.g. Blood Test Report" />
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                  placeholder="e.g. Blood Test Report"
+                />
               </div>
-              
+
               <div className="form-group">
                 <label>Document Type</label>
-                <select value={documentType} onChange={e => setDocumentType(e.target.value)} required>
+                <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} required>
                   <option value="Report">Report</option>
                   <option value="Prescription">Prescription</option>
                   <option value="Scan">Scan</option>
@@ -159,22 +163,29 @@ export default function UploadDocument() {
 
               <div className="form-group">
                 <label>Description (Optional)</label>
-                <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short notes about the file" />
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Short notes about the file"
+                />
               </div>
 
               <div className="form-group">
-                <label>Share With Doctor (Ctrl/Cmd+Click for multiple)</label>
-                <select multiple value={selectedDoctors} onChange={handleDoctorSelect} style={{ height: '100px' }}>
-                  {doctors.map(doc => (
-                    <option key={doc._id} value={doc._id}>Dr. {doc.name}</option>
+                <label>Share With Doctors (Ctrl/Cmd+Click for multiple)</label>
+                <select multiple value={selectedDoctors} onChange={handleDoctorSelect}>
+                  {doctors.map((doc) => (
+                    <option key={doc._id} value={doc._id}>
+                      Dr. {doc.name}
+                    </option>
                   ))}
                 </select>
-                <small>NOT all doctors get access. Only selected doctors will receive access.</small>
+                <small>Only selected doctors will receive access.</small>
               </div>
 
               <div className="form-group">
                 <label>Permission Level</label>
-                <select value={permission} onChange={e => setPermission(e.target.value)}>
+                <select value={permission} onChange={(e) => setPermission(e.target.value)}>
                   <option value="VIEW">View Only</option>
                   <option value="DOWNLOAD">View + Download</option>
                   <option value="FULL_ACCESS">Full Access</option>
@@ -183,7 +194,7 @@ export default function UploadDocument() {
 
               <div className="form-group">
                 <label>Expiry Time</label>
-                <select value={expiry} onChange={e => setExpiry(e.target.value)}>
+                <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
                   <option value="1H">1 Hour</option>
                   <option value="24H">24 Hours</option>
                   <option value="7D">7 Days</option>
@@ -191,13 +202,13 @@ export default function UploadDocument() {
                 </select>
               </div>
 
-              <button type="submit" disabled={uploading} style={{ padding: '12px', fontSize: '16px' }}>
-                {uploading ? 'Processing...' : 'Upload & Share'}
+              <button type="submit" className="btn-primary" disabled={uploading}>
+                {uploading ? 'Processing…' : 'Upload & Share'}
               </button>
             </form>
           </div>
         </div>
       </main>
-    </div>
+    </>
   );
 }
